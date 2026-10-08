@@ -5,7 +5,8 @@ int main(void)
 {
     int *p = sbrk(sizeof(int));
 
-    if (p == (void *)-1) {
+    if (p == (void *)-1)
+    {
         perror("sbrk failed");
         return 1;
     }
