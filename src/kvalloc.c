@@ -1,5 +1,7 @@
 #include <unistd.h>
 #include <stddef.h>
+#include <string.h>
+#include <unistd.h>
 
 struct block {
     size_t size;
@@ -106,4 +108,23 @@ void kvfree(void *ptr)
             previous->next = block->next;
         }
     }
+}
+
+void *kvcalloc(size_t count, size_t size)
+{
+    if (size != 0 && count > (size_t)-1 / size) // funcion para evitar desbordamiento
+    {
+        return NULL;
+    }
+
+    size_t total = count * size; // calcula el tamaño total
+    void *ptr = kvalloc(total); // reserva memoria
+
+    if (ptr == NULL)
+    {
+        return NULL;
+    }
+
+    memset(ptr, 0, total); // inicializar bytes a 0
+    return ptr;
 }
