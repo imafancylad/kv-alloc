@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 
 struct block {
     size_t size;
@@ -10,6 +10,18 @@ struct block {
 };
 
 static struct block *head = NULL; // cabeza de la lista enlazada de bloques
+
+static size_t align_size(size_t size)
+{
+    size_t alignment = _Alignof(max_align_t);
+
+    if (size > SIZE_MAX - (alignment - 1))
+    {
+        return 0;
+    }
+
+    return (size + alignment - 1) & ~(alignment - 1);
+}
 
 void *kvalloc(size_t size)
 {
@@ -127,4 +139,37 @@ void *kvcalloc(size_t count, size_t size)
 
     memset(ptr, 0, total); // inicializar bytes a 0
     return ptr;
+}
+
+void *kvrealloc(void *ptr, size_t new_size)
+{
+    if (ptr == NULL)
+    {
+        return kvalloc(new_size); // reservar un nuevo bloque si no existe el anterior
+    }
+
+    if (new_size == 0)
+    {
+        kvfree(ptr);
+        return NULL; // liberar el bloque y devolver NULL cuando el tamaño es 0
+    }
+
+    struct block *old_block = (struct block *)ptr - 1; // recuperar metadatos
+
+    if (old_block->size >= new_size)
+    {
+        return ptr; // si el bloque tiene espacio devolvemos el mismo puntero
+    }
+
+    void *new_ptr = kvalloc(new_size); // reservar nuevo bloque
+
+    if (new_ptr == NULL)
+    {
+        return NULL;
+    }
+
+    memcpy(new_ptr, ptr, old_block->size);
+    kvfree(ptr);
+
+    return new_ptr;
 }
