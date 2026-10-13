@@ -77,7 +77,14 @@ void *kvalloc(size_t size)
         return NULL;
     }
 
-    struct block *block = sbrk(sizeof(struct block) + aligned_size);
+    size_t total_size = sizeof(struct block) + aligned_size;
+
+    if (total_size > (size_t)INTPTR_MAX)
+    {
+        return NULL;
+    }
+    
+    struct block *block = sbrk((intptr_t)total_size);
 
     if (block == (void *)-1)
     {
