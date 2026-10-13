@@ -2,11 +2,20 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <errno.h>
+
+#define MMAP_THRESHOLD (128 * 1024)
 
 struct block {
     size_t size;
     int free;
+    int is_mmap;
     struct block *next; // cada bloque puede apuntar al siguiente
+    
+    void *mapping;
+    size_t mapping_size;
+
     _Alignas(max_align_t) unsigned char data[];
 };
 
@@ -22,6 +31,34 @@ static size_t align_size(size_t size)
     }
 
     return (size + alignment - 1) & ~(alignment - 1);
+}
+
+static void *allocate_mmap(size_t aligned_size)
+{
+    if (aligned_size > SIZE_MAX - sizeof(struct block))
+    {
+        return NULL;
+    }
+
+    size_t total_size = sizeof(struct block) + aligned_size;
+
+    void *mapping = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (mapping == MAP_FAILED)
+    {
+        return NULL;
+    }
+
+    struct block *block = mapping;
+
+    block->size = aligned_size;
+    block->free = 0;
+    block->is_mmap = 1;
+    block->next = NULL;
+    block->mapping = mapping;
+    block->mapping_size = total_size;
+
+    return block->data;
 }
 
 void *kvalloc(size_t size)
@@ -48,23 +85,14 @@ void *kvalloc(size_t size)
                 struct block *new_block = (struct block *)(current->data + aligned_size);
                 new_block->size = remaining - sizeof(struct block);
                 new_block->free = 1;
+                new_block->is_mmap = 0;
                 new_block->next = current->next;
-
+                new_block->mapping = NULL;
+                new_block->mapping_size = 0;
                 current->size = aligned_size;
                 current->next = new_block;
             }
             
-            /*
-            if (current->size >= aligned_size + sizeof(struct block) + _Alignof(max_align_t))
-            {
-                struct block *new_block = (struct block *)((char *)(current + 1) + aligned_size);
-                new_block->size = current->size - aligned_size - sizeof(struct block);
-                new_block->free = 1;
-                new_block->next = current->next;
-                current->size = aligned_size;
-                current->next = new_block;
-            } */
-
             current->free = 0;
             return current->data; // devuelve un puntero al espacio de la memoria despues del bloque de metadatos
         }
@@ -93,7 +121,10 @@ void *kvalloc(size_t size)
 
     block->size = aligned_size;
     block->free = 0;
+    block->is_mmap = 0;
     block->next = NULL;
+    block->mapping = NULL;
+    block->mapping_size = 0;
 
     if (head == NULL)
     {
