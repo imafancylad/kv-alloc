@@ -7,7 +7,7 @@ struct block {
     size_t size;
     int free;
     struct block *next; // cada bloque puede apuntar al siguiente
-    max_align_t alignment_padding; // aumento de 24 a 64 bytes de metadata 
+    _Alignas(max_align_t) unsigned char data[];
 };
 
 static struct block *head = NULL; // cabeza de la lista enlazada de bloques
@@ -40,6 +40,21 @@ void *kvalloc(size_t size)
     {
         if (current->free && current->size >= aligned_size)
         {
+            size_t remaining = current->size - aligned_size;
+            size_t alignment = _Alignof(max_align_t);
+
+            if (remaining >= sizeof(struct block) + alignment)
+            {
+                struct block *new_block = (struct block *)(current->data + aligned_size);
+                new_block->size = remaining - sizeof(struct block);
+                new_block->free = 1;
+                new_block->next = current->next;
+
+                current->size = aligned_size;
+                current->next = new_block;
+            }
+            
+            /*
             if (current->size >= aligned_size + sizeof(struct block) + _Alignof(max_align_t))
             {
                 struct block *new_block = (struct block *)((char *)(current + 1) + aligned_size);
@@ -48,11 +63,18 @@ void *kvalloc(size_t size)
                 new_block->next = current->next;
                 current->size = aligned_size;
                 current->next = new_block;
-            }
+            } */
+
             current->free = 0;
-            return (void *)(current + 1); // devuelve un puntero al espacio de la memoria despues del bloque de metadatos
+            return current->data; // devuelve un puntero al espacio de la memoria despues del bloque de metadatos
         }
+
         current = current->next; // avanza al siguiente bloque
+    }
+
+    if (aligned_size > SIZE_MAX - sizeof(struct block))
+    {
+        return NULL;
     }
 
     struct block *block = sbrk(sizeof(struct block) + aligned_size);
@@ -72,7 +94,7 @@ void *kvalloc(size_t size)
     }
     else
     {
-        struct block *current = head;
+        current = head;
 
         while (current->next != NULL)
         {
@@ -81,7 +103,7 @@ void *kvalloc(size_t size)
         current->next = block;
     }
 
-    return (void *)(block + 1); // devuelve un puntero al espacio de la memoria despues del bloque de metadatos
+    return block->data; // devuelve un puntero al espacio de la memoria despues del bloque de metadatos
 }
 
 void kvfree(void *ptr)
@@ -91,7 +113,7 @@ void kvfree(void *ptr)
         return; // no hace nada
     }
 
-    struct block *block = (struct block *)ptr - 1; // obtener el bloque de metadatos
+    struct block *block = (struct block *)((char *) ptr - offsetof(struct block, data)); // obtener el bloque de metadatos
 
     block->free = 1; // marca el bloque como libre
 
@@ -99,7 +121,7 @@ void kvfree(void *ptr)
 
     if (next != NULL && next->free)
     {
-        char *end_of_block = (char *)(block + 1) + block->size;
+        char *end_of_block = (char *)block->data + block->size;
 
         if (end_of_block == (char *)next)
         {
@@ -120,7 +142,7 @@ void kvfree(void *ptr)
     /*fusionar con el bloque anterior*/
     if (previous != NULL && previous->free)
     {
-        char *end_of_previous = (char *)(previous + 1) + previous->size;
+        char *end_of_previous = (char *)previous->data + previous->size;
 
         if (end_of_previous == (char *)block)
         {
@@ -132,7 +154,7 @@ void kvfree(void *ptr)
 
 void *kvcalloc(size_t count, size_t size)
 {
-    if (size != 0 && count > (size_t)-1 / size) // funcion para evitar desbordamiento
+    if (size != 0 && count > SIZE_MAX / size) // funcion para evitar desbordamiento
     {
         return NULL;
     }
@@ -162,7 +184,7 @@ void *kvrealloc(void *ptr, size_t new_size)
         return NULL; // liberar el bloque y devolver NULL cuando el tamaño es 0
     }
 
-    struct block *old_block = (struct block *)ptr - 1; // recuperar metadatos
+    struct block *old_block = (struct block *)((char *)ptr - offsetof(struct block, data)); // recuperar metadatos
 
     if (old_block->size >= new_size)
     {
