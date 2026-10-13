@@ -7,6 +7,7 @@ struct block {
     size_t size;
     int free;
     struct block *next; // cada bloque puede apuntar al siguiente
+    max_align_t alignment_padding; // aumento de 24 a 64 bytes de metadata 
 };
 
 static struct block *head = NULL; // cabeza de la lista enlazada de bloques
@@ -26,19 +27,26 @@ static size_t align_size(size_t size)
 void *kvalloc(size_t size)
 {
 
+    size_t aligned_size = align_size(size);
+
+    if (aligned_size == 0 && size != 0) // calculo del espacio que se debe reservar
+    {
+        return NULL;
+    }
+
     struct block *current = head;
 
     while (current != NULL)
     {
-        if (current->free && current->size >= size)
+        if (current->free && current->size >= aligned_size)
         {
-            if (current->size >= size + sizeof(struct block) + 1)
+            if (current->size >= aligned_size + sizeof(struct block) + _Alignof(max_align_t))
             {
-                struct block *new_block = (struct block *)((char *)(current + 1) + size);
-                new_block->size = current->size - size - sizeof(struct block);
+                struct block *new_block = (struct block *)((char *)(current + 1) + aligned_size);
+                new_block->size = current->size - aligned_size - sizeof(struct block);
                 new_block->free = 1;
                 new_block->next = current->next;
-                current->size = size;
+                current->size = aligned_size;
                 current->next = new_block;
             }
             current->free = 0;
@@ -47,14 +55,14 @@ void *kvalloc(size_t size)
         current = current->next; // avanza al siguiente bloque
     }
 
-    struct block *block = sbrk(sizeof(struct block) + size);
+    struct block *block = sbrk(sizeof(struct block) + aligned_size);
 
     if (block == (void *)-1)
     {
         return NULL; // sbrk falla
     }
 
-    block->size = size;
+    block->size = aligned_size;
     block->free = 0;
     block->next = NULL;
 

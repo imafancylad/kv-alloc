@@ -6,6 +6,10 @@
 
 int main(void)
 {
+    printf("Alignment required: %zu\n", _Alignof(max_align_t));
+    printf("Size of struct block: %zu\n", sizeof(struct block));
+    printf("Alignment of struct block: %zu\n", _Alignof(struct block));
+    
     void *a = kvalloc(1);
     void *b = kvalloc(20);
     void *c = kvalloc(30);
