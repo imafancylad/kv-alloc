@@ -63,10 +63,14 @@ static void *allocate_mmap(size_t aligned_size)
 
 void *kvalloc(size_t size)
 {
+    if (size == 0)
+    {
+        return NULL;
+    }
 
     size_t aligned_size = align_size(size);
 
-    if (aligned_size == 0 && size != 0) // calculo del espacio que se debe reservar
+    if (aligned_size == 0)
     {
         return NULL;
     }
