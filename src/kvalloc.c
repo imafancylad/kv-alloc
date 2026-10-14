@@ -71,6 +71,11 @@ void *kvalloc(size_t size)
         return NULL;
     }
 
+    if (aligned_size >= MMAP_THRESHOLD)
+    {
+        return allocate_mmap(aligned_size);
+    }
+
     struct block *current = head;
 
     while (current != NULL)
@@ -152,6 +157,15 @@ void kvfree(void *ptr)
     }
 
     struct block *block = (struct block *)((char *) ptr - offsetof(struct block, data)); // obtener el bloque de metadatos
+
+    if (block->is_mmap)
+    {
+        void *mapping = block->mapping;
+        size_t mapping_size = block->mapping_size;
+        
+        (void)munmap(mapping, mapping_size);
+        return;
+    }
 
     block->free = 1; // marca el bloque como libre
 
