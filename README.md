@@ -4,7 +4,7 @@
 
 The project is being developed step by step, with an emphasis on understanding pointers, block metadata, and operating-system interfaces.
 
-> **Status:** Work in progress. Some features—particularly the full integration of `mmap()` and `munmap()`—may still be under development.
+> **Status:** Work in progress. The core allocator supports small allocations through `sbrk()` and large allocations through `mmap()`. The implementation and test coverage are still being improved.
 
 ## Goals
 
@@ -19,25 +19,28 @@ The project is being developed step by step, with an emphasis on understanding p
 
 ### Implemented
 
-- [x] Memory allocation using `sbrk()`.
+- [x] Memory allocation using `sbrk()` for smaller allocations.
 - [x] Metadata describing allocated blocks.
-- [x] A linked list of memory blocks.
+- [x] A linked list of `sbrk()`-managed memory blocks.
 - [x] Block freeing and reuse.
-- [x] Splitting large blocks.
+- [x] Splitting large free blocks.
 - [x] Coalescing adjacent free blocks.
-- [x] `kvcalloc()`, including zero-initialization and overflow checking when calculating the allocation size.
+- [x] `kvcalloc()`, including zero-initialization and multiplication-overflow checking.
 - [x] `kvrealloc()` for resizing allocations.
 - [x] Size alignment to satisfy common C alignment requirements.
-- [x] A standalone experiment using `mmap()` and `munmap()`.
+- [x] `mmap()`-based allocation for requests at or above the 128 KiB threshold.
+- [x] `munmap()`-based release of `mmap()` allocations through `kvfree()`.
+- [x] A defined zero-size policy: `kvalloc(0)` returns `NULL`.
+- [x] Experiments covering allocation, freeing, mixed small/large allocations, multiple mappings, realloc growth/shrinking, boundary sizes, overflow checks, and `kvcalloc()` zero-initialization.
 
 ### In progress
 
-- [ ] Integrate `mmap()` into `kvalloc()` for large allocations.
-- [ ] Integrate `munmap()` into `kvfree()` to release those mappings correctly.
-- [ ] Add dedicated tests for small allocations, large allocations, and edge cases.
-- [ ] Continue improving error handling and allocator robustness.
+- [ ] Test `kvrealloc()` edge cases, including `kvrealloc(NULL, size)` and `kvrealloc(ptr, 0)`.
+- [ ] Expand automated tests for error paths and edge cases.
+- [ ] Improve error handling and allocator robustness.
+- [ ] Organize the public API in a dedicated header file.
 
-This checklist should be updated as features are integrated and tested.
+The checklist should be updated as features are further verified and the implementation evolves.
 
 ## Project structure
 
@@ -46,11 +49,19 @@ malloc/
 ├── src/
 │   └── kvalloc.c
 ├── experiments/
-│   └── 24_mmap.c
+│   ├── 24_mmap.c
+│   ├── 25_kvalloc_mmap.c
+│   ├── 26_mixed_allocations.c
+│   ├── 27_multiple_mmap.c
+│   ├── 28_realloc_mmap.c
+│   ├── 29_realloc_shrink.c
+│   ├── 30_allocation_boundaries.c
+│   ├── 31_overflow_checks.c
+│   └── 32_calloc_checks.c
 └── README.md
 ```
 
-The experiments are standalone programs used to investigate specific memory-management mechanisms before integrating them into the main allocator.
+The experiments are standalone programs used to investigate specific memory-management mechanisms and test allocator behavior. Some experiments include `src/kvalloc.c` directly to keep them simple while the project is being developed.
 
 ## Requirements
 
@@ -72,9 +83,16 @@ gcc -Wall -Wextra -Wpedantic -Wconversion -Wshadow -g \
 
 This command creates a temporary object file and enables several useful compiler warnings. It does not produce an executable by itself.
 
-A warning about an auxiliary function that has not been used yet may be expected while that part of the implementation is being integrated.
+To compile and run an experiment, for example:
 
-## Planned API
+```bash
+gcc -Wall -Wextra -Wpedantic -Wconversion -Wshadow -g \
+    experiments/27_multiple_mmap.c -o /tmp/27_multiple_mmap
+
+/tmp/27_multiple_mmap
+```
+
+## API
 
 The allocator uses the following function names:
 
@@ -85,11 +103,11 @@ void *kvcalloc(size_t nmemb, size_t size);
 void *kvrealloc(void *ptr, size_t size);
 ```
 
-The final public interface depends on how the source code is organized. If a `kvalloc.h` header is added, the public function declarations should be placed there.
+The final public interface depends on how the source code is organized. A dedicated `kvalloc.h` header has not yet been added; the current experiments include `src/kvalloc.c` directly.
 
 ### Usage example
 
-Once the public interface is available through a header, a test program could look like this:
+The following example illustrates the intended API. It assumes a public `kvalloc.h` header is added and the allocator implementation is linked with the program.
 
 ```c
 #include <stdio.h>
@@ -114,7 +132,7 @@ int main(void)
 }
 ```
 
-This example assumes that `kvalloc.h` exists and that the allocator implementation is linked with the program. Adjust the compilation command to match the actual project layout.
+Adjust the compilation command to match the actual project layout.
 
 ## Concepts explored
 
@@ -125,9 +143,10 @@ This example assumes that `kvalloc.h` exists and that the allocator implementati
 - **Alignment:** ensuring memory addresses and sizes meet C type-alignment requirements.
 - **`sbrk()`:** a traditional interface for changing a process's program break.
 - **`mmap()` and `munmap()`:** interfaces for mapping and unmapping memory regions.
+- **Overflow checking:** validating size calculations before allocating memory.
 
 ## Limitations
 
 This project is experimental and **must not be used as a replacement for `malloc()` in production software**.
 
-Manual memory management has many edge cases. In addition, `sbrk()` is an old interface and may conflict with other components that manage the process heap. The implementation needs further testing before it can be considered robust.
+Manual memory management has many edge cases. In addition, `sbrk()` is an old interface and may conflict with other components that manage the process heap. Although the current experiments pass, the implementation still needs broader testing, especially around error handling and `kvrealloc()` edge cases, before it can be considered robust.
